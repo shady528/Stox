@@ -1,187 +1,217 @@
-# StockBot - AI-Powered Stock Market Assistant
+# StockBot — AI-Powered Stock Market Assistant
 
-An intelligent chatbot that answers stock market queries using **Retrieval Augmented Generation (RAG)**. Users can choose their preferred LLM provider — Google Gemini, Anthropic Claude, or OpenAI GPT — and bring their own API key.
+An intelligent chatbot that answers stock market and investing queries using **Retrieval-Augmented Generation (RAG)**. Ships in two configurations — a cloud-based **online version** and a fully local **offline version** — controlled entirely by environment variables.
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![React](https://img.shields.io/badge/React-18-61DAFB)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green)
+![LangChain](https://img.shields.io/badge/LangChain-0.3.x-orange)
 ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED)
 
-## Features
-
-- **Multi-LLM Support** — Switch between Google Gemini, Anthropic Claude, and OpenAI GPT from the UI
-- **Bring Your Own Key** — Enter your API key, test the connection, and start chatting
-- **RAG Pipeline** — Answers grounded in real financial documents via vector similarity search
-- **Conversation Memory** — Maintains context across follow-up questions (last 3 turns)
-- **Follow-up Suggestions** — Every answer includes logical follow-up questions
-- **Request Logging** — Structured logging with rotation for all API requests and LLM interactions
+---
 
 ## Architecture
 
-```
-React Frontend (port 3000)
-    │
-    ├── LLM Settings Modal (provider/model/key selection)
-    └── Chat Interface
-            │
-            ▼
-FastAPI Backend (port 8000)
-    │
-    ├── /llm/providers    → Available LLM providers & models
-    ├── /llm/test         → Test API key connection
-    ├── /answer/          → RAG pipeline + LLM response
-    └── /health           → Health check
-            │
-            ▼
-    ┌───────────────┐     ┌──────────────────┐
-    │ AstraDB       │     │ LLM Provider     │
-    │ Vector Store  │     │ (Gemini/Claude/  │
-    │ (embeddings)  │     │  GPT)            │
-    └───────────────┘     └──────────────────┘
-```
+### RAG Pipeline
+
+![RAG Pipeline](docs/arch_pipeline.png)
+
+### Online vs Offline Versions
+
+![Online vs Offline](docs/arch_versions.png)
+
+---
+
+## Features
+
+- **Multi-LLM Support** — Switch between Google Gemini, Anthropic Claude, OpenAI GPT, or local Ollama from the UI
+- **Bring Your Own Key** — Enter your API key, test the connection, and start chatting
+- **Cross-Encoder Re-Ranker** — Retrieves k=5 candidates then re-scores with `ms-marco-MiniLM-L-6-v2`, keeping the top 2 for the LLM
+- **Two Deployment Modes** — Online (Pinecone + Gemini) or Offline (Chroma + Ollama + local embeddings)
+- **Conversation Memory** — Maintains context across the last 3 turns
+- **Follow-up Suggestions** — Every answer ends with 2 logical follow-up questions
+- **Structured Logging** — Rotating file + console logs for all requests and LLM interactions
+
+---
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| **Frontend** | React 18, Material UI, Axios |
-| **Backend** | Python, FastAPI, LangChain |
-| **LLMs** | Google Gemini Pro, Anthropic Claude, OpenAI GPT |
-| **Embeddings** | HuggingFace `hkunlp/instructor-large` |
-| **Vector DB** | DataStax AstraDB |
-| **Deployment** | Docker, Docker Compose |
+| Layer | Online Version | Offline Version |
+|---|---|---|
+| **Frontend** | React 18, Material UI, Axios | ← same |
+| **Backend** | Python 3.12, FastAPI, LangChain 0.3.x | ← same |
+| **Embeddings** | Google `gemini-embedding-001` (3072 dim) | `hkunlp/instructor-large` (768 dim) |
+| **Vector Store** | Pinecone Serverless | Chroma (local disk) |
+| **Default LLM** | Google Gemini 2.5 Flash | Ollama + Llama 3 |
+| **User LLMs** | Anthropic Claude, OpenAI GPT | Any Ollama model |
+| **Re-Ranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` | ← same |
+| **Deployment** | Docker, Railway (backend), Vercel (frontend) | Docker Compose (local) |
+
+---
 
 ## Project Structure
 
 ```
 StockBot/
-├── server/                    # FastAPI backend
+├── server/
 │   ├── app/
-│   │   ├── main.py            # App entry, CORS, request logging middleware
-│   │   ├── config.py          # Environment variable management
-│   │   ├── routes.py          # API endpoints
-│   │   ├── logger.py          # Centralized logging (file + console)
+│   │   ├── main.py                  # FastAPI app, CORS, request logging middleware
+│   │   ├── config.py                # All environment variable config
+│   │   ├── routes.py                # /answer/ /llm/test /llm/providers /health
+│   │   ├── logger.py                # Rotating file + console logger
 │   │   └── services/
-│   │       ├── rag.py         # RAG pipeline (embeddings, vector search, QA chain)
-│   │       ├── llm_provider.py # Multi-LLM factory (Google/Anthropic/OpenAI)
-│   │       └── memory.py      # Conversation memory
+│   │       ├── rag.py               # RAG pipeline (retrieve → rerank → LLM)
+│   │       ├── embedding_provider.py # Factory: google | local
+│   │       ├── vector_store.py      # Factory: pinecone | chroma
+│   │       ├── llm_provider.py      # Factory: google | anthropic | openai | ollama
+│   │       └── memory.py            # ConversationBufferWindowMemory (k=3)
 │   ├── scripts/
-│   │   └── upload.py          # PDF ingestion into AstraDB
-│   ├── data/pdfs/             # Knowledge base PDFs
-│   ├── Dockerfile
-│   └── requirements.txt
+│   │   └── upload.py                # PDF ingestion (works for both stores)
+│   ├── data/pdfs/                   # Source documents
+│   ├── requirements.txt             # Shared base deps
+│   ├── requirements.online.txt      # Cloud deps (pinecone, google-genai, etc.)
+│   ├── requirements.offline.txt     # Local deps (chromadb, sentence-transformers, ollama)
+│   ├── Dockerfile.online
+│   └── Dockerfile.offline
 │
-├── client/                    # React frontend
+├── client/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── LLMSettings.jsx  # LLM provider/model/key selector
-│   │   │   ├── BotResponse.jsx  # Typewriter response animation
+│   │   │   ├── LLMSettings.jsx      # Provider / model / API key switcher modal
+│   │   │   ├── BotResponse.jsx      # Typewriter animation
 │   │   │   └── ...
-│   │   ├── services/
-│   │   │   └── api.js         # API client with LLM config support
-│   │   └── pages/
-│   │       └── Home.jsx       # Main chat interface
-│   ├── Dockerfile
-│   └── .env.example
+│   │   ├── services/api.js          # Axios client
+│   │   └── pages/Home.jsx           # Main chat interface
+│   └── Dockerfile
 │
-├── notebooks/                 # Research notebooks (Gemini & Llama 2)
-├── docker-compose.yml
+├── docs/
+│   ├── ARCHITECTURE.md              # Full architecture reference
+│   ├── arch_pipeline.png            # RAG pipeline diagram
+│   └── arch_versions.png            # Online vs offline comparison
+│
+├── notebooks/                       # Reference notebooks (Gemini API, LLaMA 2)
+├── docker-compose.yml               # Online version
+├── docker-compose.offline.yml       # Offline version (includes Ollama sidecar)
 └── .env.example
 ```
 
+---
+
 ## Quick Start
 
-### Prerequisites
+### Online Version (Cloud)
 
-- Python 3.12+
-- Node.js 18+
-- DataStax AstraDB account (for vector storage)
-- At least one LLM API key (Google/Anthropic/OpenAI)
-
-### Backend Setup
-
+**1. Backend**
 ```bash
 cd server
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.online.txt
 
-# Configure environment variables
 cp .env.example .env
-# Edit .env with your AstraDB credentials and (optionally) a default Google API key
+# Fill in: GOOGLE_API_KEY, PINECONE_API_KEY, PINECONE_INDEX_NAME
+# Keep: EMBEDDING_PROVIDER=google, VECTOR_STORE=pinecone
 
-# Ingest PDFs into the vector database (one-time)
+# Ingest PDFs into Pinecone (one-time)
 python scripts/upload.py
 
-# Start the server
 uvicorn app.main:app --reload
 ```
 
-### Frontend Setup
-
+**2. Frontend**
 ```bash
 cd client
 npm install
-
-# Configure API URL
-cp .env.example .env
-# Edit .env if backend is not on localhost:8000
-
 npm start
 ```
 
-### Docker
-
+**3. Docker (both services)**
 ```bash
-docker-compose up
+docker-compose up --build
 ```
 
-The frontend will be at `http://localhost:3000` and the backend at `http://localhost:8000`.
+---
+
+### Offline Version (Local)
+
+```bash
+# Start everything — Ollama + backend + frontend
+docker compose -f docker-compose.offline.yml up --build
+
+# First time only: pull the Llama 3 model into Ollama
+docker compose -f docker-compose.offline.yml exec ollama ollama pull llama3
+
+# Ingest PDFs into local Chroma store
+docker compose -f docker-compose.offline.yml exec server python scripts/upload.py
+```
+
+---
 
 ## Environment Variables
 
-### Backend (`server/.env`)
+### Online (`server/.env`)
 
 | Variable | Required | Description |
-|----------|----------|-------------|
-| `GOOGLE_API_KEY` | No | Default Google Gemini API key (users can provide their own) |
-| `ASTRA_DB_APPLICATION_TOKEN` | Yes | DataStax AstraDB authentication token |
-| `ASTRA_DB_API_ENDPOINT` | Yes | DataStax AstraDB API endpoint URL |
-| `CORS_ORIGINS` | No | Comma-separated allowed origins (default: `http://localhost:3000`) |
-| `LOG_LEVEL` | No | Logging level: DEBUG, INFO, WARNING, ERROR (default: `INFO`) |
+|---|---|---|
+| `GOOGLE_API_KEY` | Yes | Google Gemini API key (embeddings + default LLM) |
+| `PINECONE_API_KEY` | Yes | Pinecone API key |
+| `PINECONE_INDEX_NAME` | No | Index name (default: `stockbot`) |
+| `EMBEDDING_PROVIDER` | No | `google` (default) or `local` |
+| `VECTOR_STORE` | No | `pinecone` (default) or `chroma` |
+| `DEFAULT_LLM_PROVIDER` | No | `google` (default) or `ollama` |
+| `CORS_ORIGINS` | No | Comma-separated origins (default: `http://localhost:3000`) |
 
-### Frontend (`client/.env`)
+### Offline additions (`docker-compose.offline.yml`)
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `REACT_APP_API_URL` | No | Backend URL (default: `http://localhost:8000`) |
+| Variable | Value |
+|---|---|
+| `EMBEDDING_PROVIDER` | `local` |
+| `VECTOR_STORE` | `chroma` |
+| `DEFAULT_LLM_PROVIDER` | `ollama` |
+| `OLLAMA_HOST` | `http://ollama:11434` |
+| `OLLAMA_MODEL` | `llama3` |
+
+---
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+|---|---|---|
 | `GET` | `/health` | Health check |
-| `GET` | `/llm/providers` | List available LLM providers and models |
+| `GET` | `/llm/providers` | List available providers and models |
 | `POST` | `/llm/test` | Test an API key connection |
 | `POST` | `/answer/` | Submit a question (with optional LLM config) |
+
+### `/answer/` request body
+```json
+{
+  "question": "What is momentum investing?",
+  "provider": "anthropic",
+  "model_name": "claude-sonnet-4-6",
+  "api_key": "sk-ant-..."
+}
+```
+`provider`, `model_name`, and `api_key` are optional — omitting them uses the server's default LLM.
+
+---
 
 ## Supported LLM Models
 
 | Provider | Models |
-|----------|--------|
-| **Google** | Gemini Pro, Gemini 1.5 Pro, Gemini 2.0 Flash |
+|---|---|
+| **Google** | Gemini 2.5 Flash, Gemini 2.5 Pro, Gemini 2.0 Flash |
 | **Anthropic** | Claude Sonnet 4.6, Claude Haiku 4.5, Claude Opus 4.8 |
 | **OpenAI** | GPT-4o, GPT-4o Mini, GPT-4.1 |
+| **Ollama (local)** | Llama 3, Llama 3 8B, Mistral, Phi-3 |
+
+---
 
 ## Logging
 
-Logs are written to `server/logs/stockbot.log` (rotating, 5MB max, 3 backups) and stdout. Each request logs:
+Logs are written to `server/logs/stockbot.log` (rotating, 5 MB max, 3 backups) and stdout.
 
-- HTTP method, path, status code, response time
-- Question received (provider, model, truncated query)
-- Vector search results count
-- Answer generation status
-- Errors with full stack traces
+Each request logs: method · path · status · response time · question · vector search count · re-rank result · answer length · errors with full stack traces.
+
+---
 
 ## License
 
