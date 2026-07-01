@@ -5,7 +5,6 @@ import Error from "../components/Error";
 import IntroSection from "../components/IntroSection";
 import Loading from "../components/Loading";
 import NavContent from "../components/NavContent";
-import SvgComponent from "../components/SvgComponent";
 import LLMSettings from "../components/LLMSettings";
 import { getAnswer } from "../services/api";
 const Home = () => {
