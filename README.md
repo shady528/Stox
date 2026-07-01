@@ -1,5 +1,7 @@
 # StockBot — AI-Powered Stock Market Assistant
 
+**Live demo**: https://stox-lac.vercel.app &nbsp;|&nbsp; **API**: https://charismatic-fascination-production-46c4.up.railway.app
+
 An intelligent chatbot that answers stock market and investing queries using **Retrieval-Augmented Generation (RAG)**. Ships in two configurations — a cloud-based **online version** and a fully local **offline version** — controlled entirely by environment variables.
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
