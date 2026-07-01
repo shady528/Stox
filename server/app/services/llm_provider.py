@@ -7,8 +7,8 @@ PROVIDERS = {
     "google": {
         "name": "Google",
         "models": [
-            {"id": "gemini-pro", "name": "Gemini Pro"},
-            {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro"},
+            {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
+            {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro"},
             {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash"},
         ],
     },
@@ -28,10 +28,19 @@ PROVIDERS = {
             {"id": "gpt-4.1", "name": "GPT-4.1"},
         ],
     },
+    "ollama": {
+        "name": "Ollama (Local)",
+        "models": [
+            {"id": "llama3", "name": "Llama 3"},
+            {"id": "llama3:8b", "name": "Llama 3 8B"},
+            {"id": "mistral", "name": "Mistral"},
+            {"id": "phi3", "name": "Phi-3"},
+        ],
+    },
 }
 
 
-def create_llm(provider: str, model_name: str, api_key: str):
+def create_llm(provider: str, model_name: str, api_key: str = None):
     logger.info(f"Creating LLM: provider={provider} model={model_name}")
     if provider == "google":
         return ChatGoogleGenerativeAI(
@@ -49,6 +58,11 @@ def create_llm(provider: str, model_name: str, api_key: str):
         return ChatOpenAI(
             model=model_name, openai_api_key=api_key, temperature=0.5
         )
+    elif provider == "ollama":
+        from langchain_ollama import ChatOllama
+        from app.config import OLLAMA_HOST
+
+        return ChatOllama(model=model_name, base_url=OLLAMA_HOST, temperature=0.5)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
