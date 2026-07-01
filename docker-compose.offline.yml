@@ -1,0 +1,44 @@
+services:
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    # After first start, pull the model:
+    #   docker compose -f docker-compose.offline.yml exec ollama ollama pull llama3
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.offline
+    ports:
+      - "8000:8000"
+    environment:
+      EMBEDDING_PROVIDER: local
+      VECTOR_STORE: chroma
+      CHROMA_PERSIST_DIR: /app/data/chroma
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: llama3
+      DEFAULT_LLM_PROVIDER: ollama
+      CORS_ORIGINS: http://localhost:3000
+    volumes:
+      - ./server/data:/app/data
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  client:
+    build:
+      context: ./client
+      args:
+        REACT_APP_API_URL: http://localhost:8000
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
