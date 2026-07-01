@@ -9,6 +9,27 @@ from app.logger import get_logger
 
 logger = get_logger("stockbot.rag")
 
+_reranker = None
+
+
+def _get_reranker():
+    global _reranker
+    if _reranker is None:
+        from sentence_transformers import CrossEncoder
+        logger.info("Loading re-ranker: cross-encoder/ms-marco-MiniLM-L-6-v2")
+        _reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+        logger.info("Re-ranker loaded")
+    return _reranker
+
+
+def rerank_docs(query: str, docs: list, top_n: int = 2) -> list:
+    reranker = _get_reranker()
+    pairs = [(query, doc.page_content) for doc in docs]
+    scores = reranker.predict(pairs)
+    ranked = sorted(zip(scores, docs), key=lambda x: x[0], reverse=True)
+    logger.info(f"Re-ranked {len(docs)} docs → kept top {top_n}")
+    return [doc for _, doc in ranked[:top_n]]
+
 PROMPT_TEMPLATE = """
 Answer the question as detailed as possible from the provided context, make sure to provide all the details. If the answer is not available in the provided context just try to answer without context but keeping chat_history in mind. Try add two Logical follow up questions in next line that can be asked by the user at the end of generated answer with the heading "Want to know more?, ask these follow up questions :"
 
@@ -46,8 +67,9 @@ def get_conversational_chain(llm=None):
 def get_answer(user_question: str, provider: str = None, model_name: str = None, api_key: str = None) -> str:
     logger.info(f"Searching vector store for: \"{user_question[:60]}\"")
     vstore = get_vector_store()
-    relevant_docs = vstore.similarity_search(user_question, k=2)
-    logger.info(f"Found {len(relevant_docs)} relevant documents")
+    candidate_docs = vstore.similarity_search(user_question, k=5)
+    logger.info(f"Retrieved {len(candidate_docs)} candidate documents")
+    relevant_docs = rerank_docs(user_question, candidate_docs, top_n=2)
 
     llm = None
     if provider and model_name:

@@ -9,3 +9,6 @@ google-generativeai>=0.3.0
 # Cloud vector store
 langchain-pinecone>=0.2.0
 pinecone>=5.0.0
+
+# Re-ranker (cross-encoder, CPU-friendly)
+sentence-transformers>=2.6.0,<3.0.0
